@@ -1,0 +1,14 @@
+{
+  "files.associations": {
+    "glfw3.h": "c",
+    "values.h": "c",
+    "idk.h": "c",
+    "gl.h": "c",
+    "math.h": "c",
+    "stdlib.h": "c",
+    "map": "c",
+    "unordered_map": "cpp",
+    "*.ppm": "c",
+    "stdio.h": "c"
+  }
+}
