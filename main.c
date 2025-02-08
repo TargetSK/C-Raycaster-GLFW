@@ -29,6 +29,7 @@ float FixAng(float a){ if(a>359){ a-=360;}
                        return a;}
 float playerX,playerY,playerDeltaX,playerDeltaY,playerAngle,planeX,planeY,frame1,frame2,fps;
 int gameState = 0, timer = 0;
+float depth[120];
 
 int mapWalls[]= {
     1,1,1,1,1,1,1,1,
@@ -68,6 +69,7 @@ typedef struct {
   int state;
   int texture;
   int x,y,z;
+  float distance;
 } sprite;
 sprite sprites[4];
 
@@ -78,7 +80,10 @@ void init(){
   playerDeltaX = cos(playerAngle)*5;
   playerDeltaY = sin(playerAngle)*5;
 
-  sprites[0].type =1; sprites[0].state=1; sprites[0].x = 1.5*64; sprites[0].y = 5*64; sprites[0].z=20;
+  sprites[0].x = 1 * 64 +32;  // Center of cell (4,5)
+  sprites[0].y = 1 * 64 +32;
+  sprites[0].z = 0;  // Height above ground
+  sprites[0].state = 1;
 }
 
 void movement(GLFWwindow* window) {
@@ -169,6 +174,11 @@ void mouseLook(GLFWwindow* window) {
     playerDeltaX = newPlayerDeltaX;
     playerDeltaY = newPlayerDeltaY;
 
+    float length = sqrt(playerDeltaX*playerDeltaX + playerDeltaY*playerDeltaY);
+    playerDeltaX /= length; // Normalize
+    playerDeltaY /= length;
+
+
     playerAngle = atan2(playerDeltaY, playerDeltaX);
     while (playerAngle < 0) {
       playerAngle += 2 * PI;
@@ -221,24 +231,155 @@ void drawSky() {    //draw sky and rotate based on player rotation
   }	
  }
 }
+void sortSprites() {
+    for (int i = 0; i < 4; i++) {
+        sprites[i].distance = (sprites[i].x - playerX) * (sprites[i].x - playerX) + 
+                              (sprites[i].y - playerY) * (sprites[i].y - playerY);
+    }
 
-void drawSprite(){
-  float spriteX =sprites[0].x-playerX; //temp float variables
-  float spriteY=sprites[0].y-playerY;
-
-  float inverseDeterminant = 1.0f / (planeX * playerDeltaY - playerDeltaX * planeY);
-
-  float transformX = inverseDeterminant * (playerDeltaY * spriteX - playerDeltaX * spriteY);
-  float transformY = inverseDeterminant * (-planeY * spriteX + planeX * spriteY);
-
-  int spriteScreenX = (int)((960 / 2) * (1 + transformX / transformY));
-
-  int spriteHeight = abs((int)(640 / transformY));
-  int spriteWidth = spriteHeight;
-
-
-  glPointSize(8); glColor3ub(255,255,0); glBegin(GL_POINTS); glVertex2i(sx*8,sy*8); glEnd();
+    // Sort sprites in descending order of distance
+    for (int i = 0; i < 3; i++) {
+        for (int j = i + 1; j < 4; j++) {
+            if (sprites[i].distance < sprites[j].distance) {
+                sprite temp = sprites[i];
+                sprites[i] = sprites[j];
+                sprites[j] = temp;
+            }
+        }
+    }
 }
+
+void updateSprites() {
+    for(int i = 0; i < 4; i++) {
+        if(sprites[i].state == 1) {
+            // Calculate direction to player
+            float dx = playerX - sprites[i].x;
+            float dy = playerY - sprites[i].y;
+            float distance = sqrt(dx*dx + dy*dy);
+            
+            // Check for collision with player
+            if(distance < 10) { // Collision radius - adjust as needed
+                gameState = 0; // Reset game
+                return;
+            }
+            
+            // Enemy movement logic
+            float moveSpeed = 0.2f; // Adjust for desired difficulty
+            
+            // Normalize direction for movement
+            if(distance > 0) { // Prevent division by zero
+                dx /= distance;
+                dy /= distance;
+                
+                // Calculate potential new position
+                float newX = sprites[i].x + dx * moveSpeed;
+                float newY = sprites[i].y + dy * moveSpeed;
+                
+                // Check wall collisions separately for X and Y
+                int currentGridX = sprites[i].x / 64;
+                int currentGridY = sprites[i].y / 64;
+                int newGridX = newX / 64;
+                int newGridY = newY / 64;
+                
+                // Try X movement
+                if(mapWalls[currentGridY * mapX + newGridX] == 0) {
+                    sprites[i].x = (int)newX;
+                }
+                
+                // Try Y movement
+                if(mapWalls[newGridY * mapX + currentGridX] == 0) {
+                    sprites[i].y = (int)newY;
+                }
+                
+                // If stuck, try to move diagonally
+                if(sprites[i].x == newX && sprites[i].y == (int)newY) {
+                    // Try alternative paths
+                    if(mapWalls[currentGridY * mapX + (currentGridX + (dx > 0 ? 1 : -1))] == 0) {
+                        sprites[i].x += (dx > 0 ? 1 : -1) * moveSpeed;
+                    }
+                    if(mapWalls[(currentGridY + (dy > 0 ? 1 : -1)) * mapX + currentGridX] == 0) {
+                        sprites[i].y += (dy > 0 ? 1 : -1) * moveSpeed;
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+void drawSprite(int spriteIndex){
+    float dirX = cos(playerAngle);
+    float dirY = sin(playerAngle);
+    float planeX = -dirY * 0.66;
+    float planeY = dirX * 0.66;
+
+    float spriteX = sprites[spriteIndex].x - playerX;
+    float spriteY = sprites[spriteIndex].y - playerY;
+
+    float invDet = 1.0 / (planeX * dirY - dirX * planeY);
+    float transformX = invDet * (dirY * spriteX - dirX * spriteY);
+    float transformY = invDet * (-planeY * spriteX + planeX * spriteY);
+
+    if (transformY <= 0) return;
+
+    int screenWidth = 960;
+    int screenHeight = 640;
+    
+    float spriteScale = 0.3;  // Adjust for desired size
+    int spriteScreenX = (int)((screenWidth / 2) * (1 + transformX / transformY));
+    int spriteHeight = abs((int)(screenHeight / (transformY * spriteScale)));
+    int spriteWidth = spriteHeight;
+
+    // Position sprite on ground
+    int drawStartY = screenHeight / 2 - spriteHeight;  // Top of sprite
+    int drawEndY = screenHeight / 2;  // Bottom of sprite (ground level)
+    int drawStartX = -spriteWidth / 2 + spriteScreenX;
+    int drawEndX = spriteWidth / 2 + spriteScreenX;
+
+    // Screen bounds check
+    drawStartY = (drawStartY < 0) ? 0 : drawStartY;
+    drawEndY = (drawEndY >= screenHeight) ? screenHeight - 1 : drawEndY;
+    drawStartX = (drawStartX < 0) ? 0 : drawStartX;
+    drawEndX = (drawEndX >= screenWidth) ? screenWidth - 1 : drawEndX;
+
+    // Draw sprite
+    for(int stripe = drawStartX; stripe < drawEndX; stripe++) {
+        if(transformY < depth[stripe / 8]) {
+            float texX = ((stripe - (-spriteWidth / 2 + spriteScreenX)) * 32.0f) / spriteWidth;
+            
+            if(texX >= 0 && texX < 32) {
+                for(int y = drawStartY; y < drawEndY; y++) {
+                    float texY = 31 - ((y - drawStartY) * 32.0f) / (drawEndY - drawStartY);
+                    
+                    if(texY >= 0 && texY < 32) {
+                        int color_index = ((int)texY * 32 + (int)texX) * 3;
+                        
+                        if(color_index >= 0 && color_index < 32 * 32 * 3 - 2) {
+                            int red = enemy[color_index + 0];
+                            int green = enemy[color_index + 1];
+                            int blue = enemy[color_index + 2];
+                            
+                            if(!(red == 255 && green == 0 && blue == 255)) {
+                                // Distance-based shading
+                                float shade = 1.0f / (1.0f + transformY * 0.005f);
+                                red = (int)(red * shade);
+                                green = (int)(green * shade);
+                                blue = (int)(blue * shade);
+                                
+                                glPointSize(8);
+                                glColor3ub(red, green, blue);
+                                glBegin(GL_POINTS);
+                                glVertex2i(stripe, y);
+                                glEnd();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+    
 
 void drawRays(){
     int ray,mx,my,mp,depthOfField;
@@ -352,6 +493,7 @@ void drawRays(){
         if(cosAngle>PI){cosAngle-=2*PI;}
 
         distanceFinal *= cos(cosAngle);
+        depth[ray] = distanceFinal;
 
         //line height
         float lineH = (mapS*640)/distanceFinal;
@@ -362,7 +504,6 @@ void drawRays(){
             lineH=640;
         }
         float lineOffset = 320 - (lineH/2);
-
 
         float textureY=textureYOffset*textureYStep;
         float textureX;
@@ -386,7 +527,6 @@ void drawRays(){
             float distanceY=y-(640/2.0);
 
             float raFix=cos(degToRad(FixAng(playerAngle-rayAngle)));
-
 
             float scale = (0.5 * mapX * mapS) / 1.6; //((0.5*960)/(5/8*640));
 
@@ -429,8 +569,14 @@ void display(GLFWwindow* window){
     if (gameState==1){ //game loop
       drawSky();
       drawRays();
-      drawSprite();
-      if((int)playerX>>6==1 && (int)playerY>>6==1){gameState=2;}
+
+      updateSprites();
+      sortSprites();
+      for (int i = 0; i < 4; i++) {
+            drawSprite(i);
+        }
+        
+      if((int)playerX>>6==1 && (int)playerY>>6==6){gameState=2;}
     }
 
     if(gameState == 2){

@@ -1,6 +1,6 @@
 #pragma once
 
-#define PLAYER_SPEED 0.1
+#define PLAYER_SPEED 1
 #define ROTATION_ANGLE 0.025
 #define SECOND *1000
 #define PI 3.14159265358979323846
