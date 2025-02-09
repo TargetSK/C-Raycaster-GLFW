@@ -11,6 +11,8 @@
 //#include "textures/start.PPM"
 //#include "textures/loose.PPM"
 #include "textures/sky.PPM"
+#include "textures/key.PPM"
+#include "textures/sword.PPM"
 
 
 //        TODO:
@@ -30,6 +32,16 @@ float FixAng(float a){ if(a>359){ a-=360;}
 float playerX,playerY,playerDeltaX,playerDeltaY,playerAngle,planeX,planeY,frame1,frame2,fps;
 int gameState = 0, timer = 0;
 float depth[120];
+int hasKey = 0;     // Player has key flag
+int hasSword = 0;   // Player has sword flag
+typedef struct {
+  int type;
+  int state;
+  int texture;
+  int x,y,z;
+  float distance;
+} sprite;
+sprite sprites[3];
 
 int mapWalls[]= {
     1,1,1,1,1,1,1,1,
@@ -64,26 +76,34 @@ int mapFunctionality[] = {
     1,1,1,1,1,1,1,1
 };
 
-typedef struct {
-  int type;
-  int state;
-  int texture;
-  int x,y,z;
-  float distance;
-} sprite;
-sprite sprites[4];
-
 void init(){
   glClearColor(0.3,0.3,0.3,0);
   playerX = 300; playerY = 300;
-  playerAngle = 90; 
+  playerAngle = 180; 
   playerDeltaX = cos(playerAngle)*5;
   playerDeltaY = sin(playerAngle)*5;
 
-  sprites[0].x = 1 * 64 +32;  // Center of cell (4,5)
-  sprites[0].y = 1 * 64 +32;
-  sprites[0].z = 0;  // Height above ground
-  sprites[0].state = 1;
+    hasKey = 0;
+    hasSword = 0;
+
+    // Initialize enemies
+    sprites[0].type = 0;  // enemy
+    sprites[0].x = 3 * 64 + 32;
+    sprites[0].y = 1 * 64 + 32;
+    sprites[0].z = 10;
+    sprites[0].state = 1;
+    // Initialize key
+    sprites[1].type = 1;  // key
+    sprites[1].x = 1 * 64 + 32;  // Position the key
+    sprites[1].y = 1 * 64 + 32;
+    sprites[1].z = 3;
+    sprites[1].state = 1;
+    // Initialize sword
+    sprites[2].type = 2;  // sword
+    sprites[2].x = 6 * 64 + 32;  // Position the sword
+    sprites[2].y = 1 * 64 + 32;
+    sprites[2].z = 3;
+    sprites[2].state = 1;
 }
 
 void movement(GLFWwindow* window) {
@@ -155,8 +175,12 @@ void movement(GLFWwindow* window) {
   //door open
   if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
     if(mapFunctionality[playerGridPosY_add_yOffset*mapX+playerGridPosX_add_xOffset]==2){
-      mapFunctionality[playerGridPosY_add_yOffset*mapX+playerGridPosX_add_xOffset]=0;}
-  }
+        if(hasKey) {
+                mapFunctionality[playerGridPosY_add_yOffset*mapX+playerGridPosX_add_xOffset]=0;
+                // Play sound or show effect for door opening
+            }
+        }
+    }
   
 }
 
@@ -231,8 +255,9 @@ void drawSky() {    //draw sky and rotate based on player rotation
   }	
  }
 }
+
 void sortSprites() {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         sprites[i].distance = (sprites[i].x - playerX) * (sprites[i].x - playerX) + 
                               (sprites[i].y - playerY) * (sprites[i].y - playerY);
     }
@@ -250,64 +275,71 @@ void sortSprites() {
 }
 
 void updateSprites() {
-    for(int i = 0; i < 4; i++) {
+    for(int i = 0; i < 3; i++) {
         if(sprites[i].state == 1) {
-            // Calculate direction to player
+            // Calculate distance to player
             float dx = playerX - sprites[i].x;
             float dy = playerY - sprites[i].y;
             float distance = sqrt(dx*dx + dy*dy);
             
-            // Check for collision with player
-            if(distance < 10) { // Collision radius - adjust as needed
-                gameState = 0; // Reset game
-                return;
+            // Check for collisions with items and enemies
+            if(distance < 30) {  // Collision radius
+                switch(sprites[i].type) {
+                    case 0:  // Enemy
+                        if(hasSword) {
+                            sprites[i].state = 0;  // Enemy defeated
+                        } else {
+                            gameState = 0;  // Game over
+                        }
+                        break;
+                        
+                    case 1:  // Key
+                        hasKey = 1;
+                        sprites[i].state = 0;  // Collect key
+                        break;
+                        
+                    case 2:  // Sword
+                        hasSword = 1;
+                        sprites[i].state = 0;  // Collect sword
+                        break;
+                }
             }
             
-            // Enemy movement logic
-            float moveSpeed = 0.2f; // Adjust for desired difficulty
-            
-            // Normalize direction for movement
-            if(distance > 0) { // Prevent division by zero
-                dx /= distance;
-                dy /= distance;
-                
-                // Calculate potential new position
-                float newX = sprites[i].x + dx * moveSpeed;
-                float newY = sprites[i].y + dy * moveSpeed;
-                
-                // Check wall collisions separately for X and Y
-                int currentGridX = sprites[i].x / 64;
-                int currentGridY = sprites[i].y / 64;
-                int newGridX = newX / 64;
-                int newGridY = newY / 64;
-                
-                // Try X movement
-                if(mapWalls[currentGridY * mapX + newGridX] == 0) {
-                    sprites[i].x = (int)newX;
-                }
-                
-                // Try Y movement
-                if(mapWalls[newGridY * mapX + currentGridX] == 0) {
-                    sprites[i].y = (int)newY;
-                }
-                
-                // If stuck, try to move diagonally
-                if(sprites[i].x == newX && sprites[i].y == (int)newY) {
-                    // Try alternative paths
-                    if(mapWalls[currentGridY * mapX + (currentGridX + (dx > 0 ? 1 : -1))] == 0) {
-                        sprites[i].x += (dx > 0 ? 1 : -1) * moveSpeed;
-                    }
-                    if(mapWalls[(currentGridY + (dy > 0 ? 1 : -1)) * mapX + currentGridX] == 0) {
-                        sprites[i].y += (dy > 0 ? 1 : -1) * moveSpeed;
+            // Only move enemies (type 0)
+            if(sprites[i].type == 0) {
+                // Existing enemy movement code
+                float moveSpeed = 0.2f;
+                if(distance > 1) {
+                    dx /= distance;
+                    dy /= distance;
+                    
+                    float newX = sprites[i].x + dx * moveSpeed;
+                    float newY = sprites[i].y + dy * moveSpeed;
+                    
+                    int currentGridX = sprites[i].x / 64;
+                    int currentGridY = sprites[i].y / 64;
+                    int newGridX = (int)newX / 64;
+                    int newGridY = (int)newY / 64;
+                    
+                    if(newGridX >= 0 && newGridX < mapX && newGridY >= 0 && newGridY < mapY) {
+                        if(mapWalls[currentGridY * mapX + newGridX] == 0) {
+                            sprites[i].x = (int)newX;
+                        }
+                        if(mapWalls[newGridY * mapX + currentGridX] == 0) {
+                            sprites[i].y = (int)newY;
+                        }
                     }
                 }
             }
         }
     }
 }
+    
+
 
 
 void drawSprite(int spriteIndex){
+    if(spriteIndex >= 3 || sprites[spriteIndex].state == 0) return;
     float dirX = cos(playerAngle);
     float dirY = sin(playerAngle);
     float planeX = -dirY * 0.66;
@@ -325,7 +357,7 @@ void drawSprite(int spriteIndex){
     int screenWidth = 960;
     int screenHeight = 640;
     
-    float spriteScale = 0.3;  // Adjust for desired size
+    float spriteScale = 0.05;  // Adjust for desired size
     int spriteScreenX = (int)((screenWidth / 2) * (1 + transformX / transformY));
     int spriteHeight = abs((int)(screenHeight / (transformY * spriteScale)));
     int spriteWidth = spriteHeight;
@@ -342,6 +374,22 @@ void drawSprite(int spriteIndex){
     drawStartX = (drawStartX < 0) ? 0 : drawStartX;
     drawEndX = (drawEndX >= screenWidth) ? screenWidth - 1 : drawEndX;
 
+    int *currentTexture;
+    switch(sprites[spriteIndex].type) {
+        case 0:
+            currentTexture = enemy;
+            break;
+        case 1:
+            currentTexture = key;
+            break;
+        case 2:
+            currentTexture = sword;
+            break;
+        default:
+            currentTexture = enemy;
+            break;
+    }
+
     // Draw sprite
     for(int stripe = drawStartX; stripe < drawEndX; stripe++) {
         if(transformY < depth[stripe / 8]) {
@@ -355,10 +403,11 @@ void drawSprite(int spriteIndex){
                         int color_index = ((int)texY * 32 + (int)texX) * 3;
                         
                         if(color_index >= 0 && color_index < 32 * 32 * 3 - 2) {
-                            int red = enemy[color_index + 0];
-                            int green = enemy[color_index + 1];
-                            int blue = enemy[color_index + 2];
+                            int red = currentTexture[color_index + 0];
+                            int green = currentTexture[color_index + 1];
+                            int blue = currentTexture[color_index + 2];
                             
+                            // Assuming magenta (255,0,255) is your transparency color
                             if(!(red == 255 && green == 0 && blue == 255)) {
                                 // Distance-based shading
                                 float shade = 1.0f / (1.0f + transformY * 0.005f);
@@ -572,7 +621,7 @@ void display(GLFWwindow* window){
 
       updateSprites();
       sortSprites();
-      for (int i = 0; i < 4; i++) {
+      for (int i = 0; i < 3; i++) {
             drawSprite(i);
         }
         
