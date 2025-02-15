@@ -3,6 +3,7 @@
 #include <math.h>
 #include <glfw3.h>
 #include <GL/gl.h>
+#include <stdbool.h>
 #include "include/idk.h"
 
 #include "textures/textures.PPM"
@@ -79,7 +80,7 @@ int mapFunctionality[] = {
 void init(){
   glClearColor(0.3,0.3,0.3,0);
   playerX = 300; playerY = 300;
-  playerAngle = 180; 
+  playerAngle = 170; 
   playerDeltaX = cos(playerAngle)*5;
   playerDeltaY = sin(playerAngle)*5;
 
@@ -275,6 +276,9 @@ void sortSprites() {
 }
 
 void updateSprites() {
+    static float accumulatedX[3] = {0}; // Track sub-pixel movement
+    static float accumulatedY[3] = {0};
+
     for(int i = 0; i < 3; i++) {
         if(sprites[i].state == 1) {
             // Calculate distance to player
@@ -283,7 +287,7 @@ void updateSprites() {
             float distance = sqrt(dx*dx + dy*dy);
             
             // Check for collisions with items and enemies
-            if(distance < 30) {  // Collision radius
+            if(distance < 20) {  // Collision radius
                 switch(sprites[i].type) {
                     case 0:  // Enemy
                         if(hasSword) {
@@ -307,26 +311,69 @@ void updateSprites() {
             
             // Only move enemies (type 0)
             if(sprites[i].type == 0) {
-                // Existing enemy movement code
-                float moveSpeed = 0.2f;
-                if(distance > 1) {
-                    dx /= distance;
-                    dy /= distance;
+                float moveSpeed = 0.5f;
+                
+                if(distance > 20 && distance < 400) {
+                    // Normalize direction vector
+                    float length = sqrt(dx*dx + dy*dy);
+                    dx = dx / length;
+                    dy = dy / length;
                     
-                    float newX = sprites[i].x + dx * moveSpeed;
-                    float newY = sprites[i].y + dy * moveSpeed;
+                    // Accumulate movement
+                    accumulatedX[i] += dx * moveSpeed;
+                    accumulatedY[i] += dy * moveSpeed;
                     
-                    int currentGridX = sprites[i].x / 64;
-                    int currentGridY = sprites[i].y / 64;
-                    int newGridX = (int)newX / 64;
-                    int newGridY = (int)newY / 64;
+                    int moveX = (int)accumulatedX[i];
+                    int moveY = (int)accumulatedY[i];
                     
-                    if(newGridX >= 0 && newGridX < mapX && newGridY >= 0 && newGridY < mapY) {
-                        if(mapWalls[currentGridY * mapX + newGridX] == 0) {
-                            sprites[i].x = (int)newX;
+                    if(moveX != 0 || moveY != 0) {
+                        // Calculate potential new positions
+                        float newX = sprites[i].x + moveX;
+                        float newY = sprites[i].y + moveY;
+                        
+                        // Check wall collisions with some padding
+                        int checkX1 = (newX - 10) / 64;  // Left side check
+                        int checkX2 = (newX + 10) / 64;  // Right side check
+                        int checkY1 = (newY - 10) / 64;  // Top check
+                        int checkY2 = (newY + 10) / 64;  // Bottom check
+                        
+                        // Current position
+                        int currentX = sprites[i].x / 64;
+                        int currentY = sprites[i].y / 64;
+                        
+                        // Check if any of the checked positions are walls
+                        bool canMoveX = true;
+                        bool canMoveY = true;
+                        
+                        // Check X movement
+                        if(checkX1 >= 0 && checkX2 < mapX && currentY >= 0 && currentY < mapY) {
+                            if(mapWalls[currentY * mapX + checkX1] != 0 || 
+                               mapWalls[currentY * mapX + checkX2] != 0) {
+                                canMoveX = false;
+                            }
                         }
-                        if(mapWalls[newGridY * mapX + currentGridX] == 0) {
-                            sprites[i].y = (int)newY;
+                        
+                        // Check Y movement
+                        if(currentX >= 0 && currentX < mapX && checkY1 >= 0 && checkY2 < mapY) {
+                            if(mapWalls[checkY1 * mapX + currentX] != 0 || 
+                               mapWalls[checkY2 * mapX + currentX] != 0) {
+                                canMoveY = false;
+                            }
+                        }
+                        
+                        // Apply movement only if no wall collision
+                        if(canMoveY) {
+                            sprites[i].y = newY;
+                            accumulatedY[i] -= moveY;
+                        } else {
+                            accumulatedY[i] = 0; // Reset accumulator if we hit a wall
+                        }
+                        
+                        if(canMoveX) {
+                            sprites[i].x = newX;
+                            accumulatedX[i] -= moveX;
+                        } else {
+                            accumulatedX[i] = 0; // Reset accumulator if we hit a wall
                         }
                     }
                 }
@@ -409,11 +456,6 @@ void drawSprite(int spriteIndex){
                             
                             // Assuming magenta (255,0,255) is your transparency color
                             if(!(red == 255 && green == 0 && blue == 255)) {
-                                // Distance-based shading
-                                float shade = 1.0f / (1.0f + transformY * 0.005f);
-                                red = (int)(red * shade);
-                                green = (int)(green * shade);
-                                blue = (int)(blue * shade);
                                 
                                 glPointSize(8);
                                 glColor3ub(red, green, blue);
