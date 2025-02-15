@@ -18,10 +18,7 @@
 
 //        TODO:
 //  ->colsision with a and d
-//  ->fix textures
 //  ->start/fisnish screen
-//  ->eniemies
-//  ->sword
 //  ->more levels
 
 //-------------------------------------------------------------------------
@@ -108,6 +105,13 @@ void init(){
 }
 
 void movement(GLFWwindow* window) {
+  // Normalize direction vectors at the start of movement
+  float length = sqrt(playerDeltaX*playerDeltaX + playerDeltaY*playerDeltaY);
+  if(length != 0) {
+    playerDeltaX /= length;
+    playerDeltaY /= length;
+  }
+
   //offsets
   int xOffset = 0;
   if(playerDeltaX < 0){
@@ -123,7 +127,6 @@ void movement(GLFWwindow* window) {
     yOffset = 30;
   }
 
-
   //player grid pos
   int playerGridPosX = playerX / 64.0;
   int playerGridPosX_add_xOffset = (playerX + xOffset)/64.0;
@@ -133,8 +136,7 @@ void movement(GLFWwindow* window) {
   int playerGridPosY_add_yOffset = (playerY + yOffset)/64.0;
   int playerGridPosY_sub_yOffset = (playerY - yOffset)/64.0;
 
-
-  //key presses
+  // Forward/Backward movement
   if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
     if(mapFunctionality[playerGridPosY*mapX + playerGridPosX_add_xOffset] == 0){
       playerX += (playerDeltaX * PLAYER_SPEED);
@@ -153,25 +155,46 @@ void movement(GLFWwindow* window) {
     }
   }
 
-  //FIX THIS !!!!!!!!!!!!!!!!!
+  // Rotation movement
+  float rotationSpeed = 0.02f;
+  
+  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+    // Rotate left
+    float oldDirX = playerDeltaX;
+    playerDeltaX = playerDeltaX * cos(rotationSpeed) - playerDeltaY * sin(rotationSpeed);
+    playerDeltaY = oldDirX * sin(rotationSpeed) + playerDeltaY * cos(rotationSpeed);
+    
+    // Normalize after rotation
+    length = sqrt(playerDeltaX*playerDeltaX + playerDeltaY*playerDeltaY);
+    if(length != 0) {
+      playerDeltaX /= length;
+      playerDeltaY /= length;
+    }
+    
+    // Update player angle
+    playerAngle = atan2(playerDeltaY, playerDeltaX);
+    if(playerAngle < 0) playerAngle += 2*PI;
+    if(playerAngle > 2*PI) playerAngle -= 2*PI;
+  }
 
-  //if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-    //if(mapFunctionality[playerGridPosY*mapX + playerGridPosX_add_xOffset] == 0){
-    //  playerX += (playerDeltaX * PLAYER_SPEED);
-    //}
-    //if(mapFunctionality[playerGridPosY_sub_yOffset*mapX + playerGridPosX] == 0){
-    //  playerY -= (playerDeltaY * PLAYER_SPEED);
-    //}
-  //}
-
-  //if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-    //if(mapFunctionality[playerGridPosY*mapX + playerGridPosX_sub_xOffset] == 0){
-    //  playerX -= (playerDeltaX * PLAYER_SPEED);
-    //}
-    //if(mapFunctionality[playerGridPosY_add_yOffset*mapX + playerGridPosX] == 0){
-    //  playerY += (playerDeltaY * PLAYER_SPEED);
-    //}
-  //}
+  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+    // Rotate right
+    float oldDirX = playerDeltaX;
+    playerDeltaX = playerDeltaX * cos(-rotationSpeed) - playerDeltaY * sin(-rotationSpeed);
+    playerDeltaY = oldDirX * sin(-rotationSpeed) + playerDeltaY * cos(-rotationSpeed);
+    
+    // Normalize after rotation
+    length = sqrt(playerDeltaX*playerDeltaX + playerDeltaY*playerDeltaY);
+    if(length != 0) {
+      playerDeltaX /= length;
+      playerDeltaY /= length;
+    }
+    
+    // Update player angle
+    playerAngle = atan2(playerDeltaY, playerDeltaX);
+    if(playerAngle < 0) playerAngle += 2*PI;
+    if(playerAngle > 2*PI) playerAngle -= 2*PI;
+  }
 
   //door open
   if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
@@ -287,7 +310,7 @@ void updateSprites() {
             float distance = sqrt(dx*dx + dy*dy);
             
             // Check for collisions with items and enemies
-            if(distance < 20) {  // Collision radius
+            if(distance < 30) {  // Collision radius
                 switch(sprites[i].type) {
                     case 0:  // Enemy
                         if(hasSword) {
@@ -313,7 +336,7 @@ void updateSprites() {
             if(sprites[i].type == 0) {
                 float moveSpeed = 0.5f;
                 
-                if(distance > 20 && distance < 400) {
+                if(distance > 30 && distance < 400) {
                     // Normalize direction vector
                     float length = sqrt(dx*dx + dy*dy);
                     dx = dx / length;
