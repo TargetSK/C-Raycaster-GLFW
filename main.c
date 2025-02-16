@@ -1,9 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdbool.h>
+#include <string.h>
 #include <glfw3.h>
 #include <GL/gl.h>
-#include <stdbool.h>
 #include "include/idk.h"
 
 #include "textures/textures.PPM"
@@ -17,21 +18,28 @@
 
 
 //        TODO:
-//  ->colsision with a and d
 //  ->start/fisnish screen
-//  ->more levels
+//  ->better enemy movement
 
 //-------------------------------------------------------------------------
 GLFWwindow* window;
-float degToRad(float a) { return a*PI/180.0;}
-float FixAng(float a){ if(a>359){ a-=360;}
-                       if(a<0){ a+=360;} 
-                       return a;}
-float playerX,playerY,playerDeltaX,playerDeltaY,playerAngle,planeX,planeY,frame1,frame2,fps;
-int gameState = 0, timer = 0;
-float depth[120];
-int hasKey = 0;     // Player has key flag
-int hasSword = 0;   // Player has sword flag
+
+typedef struct {
+    int walls[64];      // 8x8 map (64 tiles)
+    int floor[64];      // 8x8 map
+    int functionality[64]; // 8x8 map
+    int playerStartX;
+    int playerStartY;
+    float playerStartAngle;
+    int exitX;
+    int exitY;
+    struct {
+        int type;
+        int x;
+        int y;
+    } spriteConfigs[3];
+} Level;
+
 typedef struct {
   int type;
   int state;
@@ -39,71 +47,210 @@ typedef struct {
   int x,y,z;
   float distance;
 } sprite;
+
+float playerX,playerY,playerDeltaX,playerDeltaY,playerAngle,planeX,planeY,frame1,frame2,fps;
+int gameState = 0, timer = 0;
+float depth[120];
+
+int hasKey = 0;     // Player has key flag
+int hasSword = 0; // Player has sword flag
+
+Level levels[3];  // Array to store multiple levels
+int currentLevel = 0;
+int totalLevels = 3;
+
 sprite sprites[3];
 
-int mapWalls[]= {
-    1,1,1,1,1,1,1,1,
-    1,0,0,0,0,1,0,1,
-    1,0,0,0,0,1,0,1,
-    1,0,0,0,0,1,0,1,
-    1,4,1,0,0,0,0,1,
-    1,0,1,0,0,0,0,1,
-    1,0,1,0,0,0,0,1,
-    1,4,1,1,1,1,1,1
-};
+int mapWalls[64] = {0};
+int mapFloor[64]= {0};
+int mapFunctionality[64] = {0};
 
-int mapFloor[]= {
-    2,2,2,2,2,2,2,2,	
-    2,2,2,2,2,2,2,2,	
-    2,2,2,2,2,2,2,2,	
-    2,2,2,2,2,2,2,2,	
-    2,2,2,2,2,2,2,2,	
-    2,2,2,2,2,2,2,2,	
-    2,2,2,2,2,2,2,2,	
-    2,2,2,2,2,2,2,2
-};
+float degToRad(float a) { return a*PI/180.0;}
+float FixAng(float a){ if(a>359){ a-=360;}
+                       if(a<0){ a+=360;} 
+                       return a;}
+                       
 
-int mapFunctionality[] = {
-    1,1,1,1,1,1,1,1,
-    1,0,0,0,0,1,0,1,
-    1,0,0,0,0,1,0,1,
-    1,0,0,0,0,1,0,1,
-    1,2,1,0,0,0,0,1,
-    1,0,1,0,0,0,0,1,
-    1,0,1,0,0,0,0,1,
-    1,1,1,1,1,1,1,1
-};
+void initializeLevels() {
+    Level level1 = {
+        .walls = {
+            1,1,1,1,1,1,1,1,
+            1,0,0,0,0,1,0,1,
+            1,0,0,0,0,1,0,1,
+            1,0,0,0,0,1,0,1,
+            1,4,1,0,0,0,0,1,
+            1,0,1,0,0,0,0,1,
+            1,0,1,0,0,0,0,1,
+            1,4,1,1,1,1,1,1
+        },
+        .floor = {
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2
+        },
+        .functionality = {
+            1,1,1,1,1,1,1,1,
+            1,0,0,0,0,1,0,1,
+            1,0,0,0,0,1,0,1,
+            1,0,0,0,0,1,0,1,
+            1,2,1,0,0,0,0,1,
+            1,0,1,0,0,0,0,1,
+            1,0,1,0,0,0,0,1,
+            1,1,1,1,1,1,1,1
+        },
+        .playerStartX = 300,
+        .playerStartY = 300,
+        .playerStartAngle = 80,
+        .exitX = 1,
+        .exitY = 6,
+        .spriteConfigs = {
+            {0, 3 * 64 + 32, 1 * 64 + 32},  // enemy
+            {1, 1 * 64 + 32, 1 * 64 + 32},  // key
+            {2, 6 * 64 + 32, 1 * 64 + 32}   // sword
+        }
+    };
 
-void init(){
-  glClearColor(0.3,0.3,0.3,0);
-  playerX = 300; playerY = 300;
-  playerAngle = 170; 
-  playerDeltaX = cos(playerAngle)*5;
-  playerDeltaY = sin(playerAngle)*5;
+    Level level2 = {
+        .walls = {
+            1,1,1,1,1,1,1,1,
+            1,0,0,0,0,1,0,1,
+            1,4,1,1,0,1,0,1,
+            1,0,1,1,0,1,0,1,
+            1,0,0,1,1,1,0,1,
+            1,0,1,1,1,1,0,1,
+            1,0,0,0,0,0,0,1,
+            1,1,1,1,1,1,1,1
+        },
+        .floor = {
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2
+        },
+        .functionality = {
+            1,1,1,1,1,1,1,1,
+            1,0,0,0,0,1,0,1,
+            1,2,1,1,0,1,0,1,
+            1,0,1,1,0,1,0,1,
+            1,0,0,1,1,1,0,1,
+            1,0,1,1,1,1,0,1,
+            1,0,0,0,0,0,0,1,
+            1,1,1,1,1,1,1,1
+        },
+        .playerStartX = 384+32,
+        .playerStartY = 384+32,
+        .playerStartAngle = 180,
+        .exitX = 4,
+        .exitY = 3,
+        .spriteConfigs = {
+            {0, 2 * 64 + 32, 1 * 64 + 32},  // enemy
+            {1, 6 * 64 + 32, 1 * 64 + 32},  // key
+            {2, 2 * 64 + 32, 4 * 64 + 32}   // sword
+        }
+    };
+    
+    // Level 3
+    Level level3 = {
+        .walls = {
+            1,1,1,1,1,1,1,1,
+            1,0,1,0,0,4,0,1,
+            1,0,1,0,1,1,1,1,
+            1,0,0,0,0,0,0,1,
+            1,0,1,1,1,1,0,1,
+            1,0,0,0,0,1,0,1,
+            1,0,1,1,0,0,0,1,
+            1,1,1,1,1,1,1,1
+        },
+        .floor = {
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2,
+            2,2,2,2,2,2,2,2
+        },
+        .functionality = {
+            1,1,1,1,1,1,1,1,
+            1,0,1,0,0,2,0,1,
+            1,0,1,0,1,1,1,1,
+            1,0,0,0,0,0,0,1,
+            1,0,1,1,1,1,0,1,
+            1,0,0,0,0,1,0,1,
+            1,0,1,1,0,0,0,1,
+            1,1,1,1,1,1,1,1
+        },
+        .playerStartX = 100,
+        .playerStartY = 100,
+        .playerStartAngle = 90,
+        .exitX = 6,
+        .exitY = 1,
+        .spriteConfigs = {
+            {0, 3 * 64 + 32, 3 * 64 + 32},  // enemy 
+            {2, 4 * 64 + 32, 5 * 64 + 32},  // key 
+            {1, 6 * 64 + 32, 3 * 64 + 32}   // sword 
+        }
+    };
 
+    levels[0] = level1;
+    levels[1] = level2;
+    levels[2] = level3;
+    
+}
+void loadLevel(int levelIndex) {
+    // Copy level data to the global arrays
+    memcpy(mapWalls, levels[levelIndex].walls, sizeof(mapWalls));
+    memcpy(mapFloor, levels[levelIndex].floor, sizeof(mapFloor));
+    memcpy(mapFunctionality, levels[levelIndex].functionality, sizeof(mapFunctionality));
+    
+    // Set player position
+    playerX = levels[levelIndex].playerStartX;
+    playerY = levels[levelIndex].playerStartY;
+    playerAngle = levels[levelIndex].playerStartAngle;
+    playerDeltaX = cos(playerAngle)*5;
+    playerDeltaY = sin(playerAngle)*5;
+
+    // Reset player state
     hasKey = 0;
     hasSword = 0;
 
-    // Initialize enemies
-    sprites[0].type = 0;  // enemy
-    sprites[0].x = 3 * 64 + 32;
-    sprites[0].y = 1 * 64 + 32;
-    sprites[0].z = 10;
-    sprites[0].state = 1;
-    // Initialize key
-    sprites[1].type = 1;  // key
-    sprites[1].x = 1 * 64 + 32;  // Position the key
-    sprites[1].y = 1 * 64 + 32;
-    sprites[1].z = 3;
-    sprites[1].state = 1;
-    // Initialize sword
-    sprites[2].type = 2;  // sword
-    sprites[2].x = 6 * 64 + 32;  // Position the sword
-    sprites[2].y = 1 * 64 + 32;
-    sprites[2].z = 3;
-    sprites[2].state = 1;
+    // Initialize sprites for current level
+    for(int i = 0; i < 3; i++) {
+        sprites[i].type = levels[levelIndex].spriteConfigs[i].type;
+        sprites[i].x = levels[levelIndex].spriteConfigs[i].x;
+        sprites[i].y = levels[levelIndex].spriteConfigs[i].y;
+        sprites[i].z = (sprites[i].type == 0) ? 10 : 3;  // Enemy taller than items
+        sprites[i].state = 1;
+    }
 }
 
+void checkLevelCompletion() {
+    if((int)playerX>>6 == levels[currentLevel].exitX && 
+       (int)playerY>>6 == levels[currentLevel].exitY) {
+        currentLevel++;
+        if(currentLevel >= totalLevels) {
+            gameState = 3;  // Win game
+        } else {
+            loadLevel(currentLevel);
+            gameState = 2;  // Level complete
+        }
+    }
+}
+
+void init(){
+    glClearColor(0.3,0.3,0.3,0);
+    loadLevel(currentLevel);
+}
 void movement(GLFWwindow* window) {
   // Normalize direction vectors at the start of movement
   float length = sqrt(playerDeltaX*playerDeltaX + playerDeltaY*playerDeltaY);
@@ -214,7 +361,7 @@ void mouseLook(GLFWwindow* window) {
   glfwGetCursorPos(window, &mouseX, &mouseY);
 
   if (!(mouseX == prevMouseX)) {
-    float rotationAngle = (mouseX - prevMouseX) * 0.025;
+    float rotationAngle = (mouseX - prevMouseX) * 0.011;
 
     float newPlayerDeltaX = playerDeltaX * cos(rotationAngle) - playerDeltaY * sin(rotationAngle);
     float newPlayerDeltaY = playerDeltaX * sin(rotationAngle) + playerDeltaY * cos(rotationAngle);
@@ -683,14 +830,13 @@ void display(GLFWwindow* window){
     if (gameState==1){ //game loop
       drawSky();
       drawRays();
-
       updateSprites();
       sortSprites();
       for (int i = 0; i < 3; i++) {
             drawSprite(i);
         }
         
-      if((int)playerX>>6==1 && (int)playerY>>6==6){gameState=2;}
+        checkLevelCompletion();
     }
 
     if(gameState == 2){
@@ -719,6 +865,8 @@ int main() {
     glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     
     glOrtho(0.0,WINDOW_WIDTH,0.0,WINDOW_HEIGHT,0.0,1.0);
+
+    initializeLevels();
 
     init();
 
