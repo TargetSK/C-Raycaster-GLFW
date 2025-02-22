@@ -13,10 +13,12 @@
 #define mapY 8
 #define mapS 64
 
-extern float playerX,playerY,playerDeltaX,playerDeltaY,playerAngle,planeX,planeY,
-             horizontalX, horizontalY, veritcalX, verticalY, distanceH, distanceV;
 
+//extern float playerX,playerY,playerDeltaX,playerDeltaY,playerAngle,planeX,planeY,
+//             horizontalX, horizontalY, veritcalX, verticalY, distanceH, distanceV;
+extern const int numberPatterns[10][5][4];
 
-void display();
+float degToRad(float a);
+float FixAng(float a);
 float dist(float ax,float ay, float bx, float by, float ang);
-void init();
+

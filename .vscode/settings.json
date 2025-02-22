@@ -9,6 +9,7 @@
     "map": "c",
     "unordered_map": "cpp",
     "*.ppm": "c",
-    "stdio.h": "c"
+    "stdio.h": "c",
+    "definitions.h": "c"
   }
 }

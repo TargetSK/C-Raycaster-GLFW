@@ -5,13 +5,10 @@
 #include <string.h>
 #include <glfw3.h>
 #include <GL/gl.h>
-#include "include/idk.h"
+#include "include/definitions.h"
 
 #include "textures/textures.PPM"
 #include "textures/enemy.PPM"
-//#include "textures/win.PPM"
-//#include "textures/start.PPM"
-//#include "textures/loose.PPM"
 #include "textures/sky.PPM"
 #include "textures/key.PPM"
 #include "textures/sword.PPM"
@@ -19,7 +16,6 @@
 
 //        TODO:
 //  ->start/fisnish screen
-//  ->better enemy movement
 
 //-------------------------------------------------------------------------
 GLFWwindow* window;
@@ -48,28 +44,25 @@ typedef struct {
   float distance;
 } sprite;
 
-float playerX,playerY,playerDeltaX,playerDeltaY,playerAngle,planeX,planeY,frame1,frame2,fps;
-int gameState = 0, timer = 0;
+float playerX,playerY,playerDeltaX,playerDeltaY,playerAngle,planeX,planeY;
 float depth[120];
-
-int hasKey = 0;     // Player has key flag
-int hasSword = 0; // Player has sword flag
-
-Level levels[3];  // Array to store multiple levels
+int gameState = 0;
+int hasKey = 0;     
+int hasSword = 0; 
+double gameStartTime = 0;
+double totalTime = 0;
+int victoryTimer = 0;
+double finalTime = 0;
+bool gameStarted = false;
 int currentLevel = 0;
 int totalLevels = 3;
 
 sprite sprites[3];
+Level levels[3];
 
 int mapWalls[64] = {0};
 int mapFloor[64]= {0};
 int mapFunctionality[64] = {0};
-
-float degToRad(float a) { return a*PI/180.0;}
-float FixAng(float a){ if(a>359){ a-=360;}
-                       if(a<0){ a+=360;} 
-                       return a;}
-                       
 
 void initializeLevels() {
     Level level1 = {
@@ -157,7 +150,6 @@ void initializeLevels() {
             {2, 2 * 64 + 32, 4 * 64 + 32}   // sword
         }
     };
-    
     // Level 3
     Level level3 = {
         .walls = {
@@ -201,12 +193,11 @@ void initializeLevels() {
             {1, 6 * 64 + 32, 3 * 64 + 32}   // sword 
         }
     };
-
     levels[0] = level1;
     levels[1] = level2;
     levels[2] = level3;
-    
 }
+
 void loadLevel(int levelIndex) {
     // Copy level data to the global arrays
     memcpy(mapWalls, levels[levelIndex].walls, sizeof(mapWalls));
@@ -239,10 +230,9 @@ void checkLevelCompletion() {
        (int)playerY>>6 == levels[currentLevel].exitY) {
         currentLevel++;
         if(currentLevel >= totalLevels) {
-            gameState = 3;  // Win game
+            gameState = 2;  // Win game
         } else {
-            loadLevel(currentLevel);
-            gameState = 2;  // Level complete
+            loadLevel(currentLevel); 
         }
     }
 }
@@ -250,6 +240,8 @@ void checkLevelCompletion() {
 void init(){
     glClearColor(0.3,0.3,0.3,0);
     loadLevel(currentLevel);
+    gameStarted = false;
+    totalTime = 0;
 }
 void movement(GLFWwindow* window) {
   // Normalize direction vectors at the start of movement
@@ -389,23 +381,84 @@ void mouseLook(GLFWwindow* window) {
   planeY = -playerDeltaX * 0.66;
 }
 
+void drawPixel(int x, int y, int size, int r, int g, int b) {
+    glPointSize(size);
+    glColor3ub(r, g, b);
+    glBegin(GL_POINTS);
+    glVertex2i(x, y);
+    glEnd();
+}
 
-void screen(int v){
-    int x,y;
-    int *Texture;
-    //if(v==1){Texture = start;}
-    //if(v==2){Texture = loose;}
-    //if(v==3){Texture = win;}
-
-    for(y=0;y<80;y++){
-        for(x=0;x<120;x++){
-            int pixel = (y*120+x)*3;
-            int red = Texture[pixel+0];
-            int green = Texture[pixel+1];
-            int blue = Texture[pixel+2];
-            glPointSize(8); glColor3ub(red,green,blue); glBegin(GL_POINTS); glVertex2i(x+200,y+100); glEnd();
+void drawNumber(int number, int x, int y, int size, int r, int g, int b) {
+    for(int row = 0; row < 5; row++) {
+        for(int col = 0; col < 4; col++) {
+            if(numberPatterns[number][row][col]) {
+                drawPixel(x + col * size, y - row * size, size, r, g, b);
+            }
         }
     }
+}
+
+void drawTime(double time, int x, int y, int size) {
+    int minutes = (int)time / 60;
+    int seconds = (int)time % 60;
+    
+    // Draw minutes
+    drawNumber(minutes / 10, x, y, size, 255, 255, 255);
+    drawNumber(minutes % 10, x + size * 5, y, size, 255, 255, 255);
+    
+    // Draw colon
+    drawPixel(x + size * 9, y - size, size, 255, 255, 255);
+    drawPixel(x + size * 9, y - size * 3, size, 255, 255, 255);
+    
+    // Draw seconds
+    drawNumber(seconds / 10, x + size * 11, y, size, 255, 255, 255);
+    drawNumber(seconds % 10, x + size * 16, y, size, 255, 255, 255);
+}
+
+void drawStatusText() {
+    if(hasSword) {
+        glPointSize(16);
+        glColor3ub(0, 255, 0);  // Green color
+        glBegin(GL_POINTS);
+        for(int y = 100; y < 150; y += 8) {
+            glVertex2i(30, y);  // Draw at top-left corner
+        }
+        glEnd();
+    }
+    
+    if(hasKey) {
+        glPointSize(16);
+        glColor3ub(255, 215, 0);  // Gold color
+        glBegin(GL_POINTS);
+        for(int y = 100; y < 150; y += 8) {
+            glVertex2i(10, y);  // Draw below sword indicator
+        }
+        glEnd();
+    }
+    
+    // Draw timer
+    if(gameState == 1) {
+        if(!gameStarted) {
+            gameStarted = true;
+            gameStartTime = glfwGetTime();
+        }
+        totalTime = glfwGetTime() - gameStartTime;
+    }
+    drawTime(totalTime, 750, 100, 8);  // Draw at top-right corner
+}
+
+void drawVictoryScreen() {
+    // Center the text
+    int centerX = WINDOW_WIDTH / 2 - 100;
+    int centerY = WINDOW_HEIGHT / 2;
+    
+    if(finalTime == 0){
+        finalTime = totalTime; //player haven't died
+    }
+
+    // Draw final time
+    drawTime(finalTime, centerX, centerY, 16);
 }
 
 void drawSky() {    //draw sky and rotate based on player rotation
@@ -463,6 +516,7 @@ void updateSprites() {
                         if(hasSword) {
                             sprites[i].state = 0;  // Enemy defeated
                         } else {
+                            finalTime += totalTime;
                             gameState = 0;  // Game over
                         }
                         break;
@@ -821,28 +875,31 @@ void display(GLFWwindow* window){
     if (playerDeltaY < 0) { yOfset =-20;} else {yOfset = 20;}    
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    frame2 = glfwGetTime(); 
-    fps = (frame2 - frame1);
-    frame1 = glfwGetTime();
 
-    if(gameState==0){ init(); timer += 1; if(timer>3000){timer=0; gameState=1;}}//main screen
+    if(gameState==0){ init();  gameState=1;}//main screen
 
     if (gameState==1){ //game loop
-      drawSky();
-      drawRays();
-      updateSprites();
-      sortSprites();
-      for (int i = 0; i < 3; i++) {
+        drawSky();
+        drawRays();
+        updateSprites();
+        sortSprites();
+        for (int i = 0; i < 3; i++) {
             drawSprite(i);
         }
+        drawStatusText();
         
         checkLevelCompletion();
     }
 
     if(gameState == 2){
-        //screen won
-        printf("you won :D");
-        gameState = 0;
+        drawVictoryScreen();
+        victoryTimer++;
+        
+        if(victoryTimer > 18000) { // About 3 seconds at 60 FPS
+            gameState = 0;
+            currentLevel = 0;
+            init();
+        }
     }
 
     glfwSwapBuffers(window);
@@ -871,8 +928,8 @@ int main() {
     init();
 
     while (!glfwWindowShouldClose(window)) {
-        mouseLook(window);
         movement(window);
+        mouseLook(window);
         display(window);
         glfwPollEvents();
     }
