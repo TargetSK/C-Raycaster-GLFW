@@ -678,9 +678,7 @@ void drawSprite(int spriteIndex){
                             int green = currentTexture[color_index + 1];
                             int blue = currentTexture[color_index + 2];
                             
-                            // Assuming magenta (255,0,255) is your transparency color
                             if(!(red == 255 && green == 0 && blue == 255)) {
-                                
                                 glPointSize(8);
                                 glColor3ub(red, green, blue);
                                 glBegin(GL_POINTS);
